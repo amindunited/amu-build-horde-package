@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/amindunited/amu-build-horde-package/issues"
   },
-  "homepage": "https://github.com/amindunited/amu-build-horde-package#readme"
+  "homepage": "https://github.com/amindunited/amu-build-horde-package#readme",
+  "dependencies": {
+    "fs-extra": "^2.0.0"
+  }
 }
