@@ -2,6 +2,8 @@
 
 var path = require('path');
 var fs = require('fs-extra');
+var yazl = require('yazl');
+var recursive = require('recursive-readdir');
 
 const ROOT_DIR = process.cwd();
 const CONFIG_FILENAME = '.buidHordePackage.conf.js';
@@ -27,7 +29,10 @@ class BuildHordePackage {
 
         Object.assign(CONFIG, require(filePath).config);
         console.log('updated config ', CONFIG);
-        this.runBuilds();
+        this.runBuilds()
+        .then(() => {
+          this.make_zip();
+        });
 
       } else if (err) {
 
@@ -46,34 +51,46 @@ class BuildHordePackage {
   runBuilds () {
     let projects = CONFIG.projects;
     console.log('config', CONFIG);
-    this.build_destination_directory('./projects/').then(()=> {
-      projects.forEach((obj) => {
-        console.log('project for each', obj);
-        //...
-        //should change the process to the directory for the project
-        process.chdir(obj.src_directory);
+    let promise = new Promise((resolve, reject) => {
+      
+      this.build_destination_directory(CONFIG.destination).then(()=> {
+      
+        projects.forEach((obj, index, arr) => {
+          console.log('project for each', obj);
+          //...
+          //should change the process to the directory for the project
+          process.chdir(obj.src_directory);
 
-        //split up the commands into an array
-        var args = obj.build_command.split(' ');
+          //split up the commands into an array
+          var args = obj.build_command.split(' ');
 
-        //shift the cmd from the front of the array
-        var cmd = args.shift();
+          //shift the cmd from the front of the array
+          var cmd = args.shift();
 
-        //...then run the build command, with the args array
-        var spawn = require('child_process').spawn;
-        var exe = spawn( cmd, args );
+          //...then run the build command, with the args array
+          var spawn = require('child_process').spawn;
+          var exe = spawn( cmd, args );
 
-        //...then change back to root_dir
-        process.chdir(__dirname);
+          //...then change back to root_dir
+          process.chdir(__dirname);
 
-        //...copy the files from the source to the destination
-        fs.copy(obj.src_directory+'/'+obj.build_output_dir, './projects/'+obj.destination_dir, (err) => {
-          console.log('fs.copy ', err, __dirname);
+          //...copy the files from the source to the destination
+          fs.copy(obj.src_directory+'/'+obj.build_output_dir, CONFIG.destination + '/' + obj.destination_dir, (err) => {
+            console.log('fs.copy ', err, __dirname);
+            if (!err) {
+              console.log('arr check', index, '===', arr.length);
+              if ( index === (arr.length - 1) ) {
+                console.log('should be the last one');
+                resolve();
+              }
+            }
+          });
         });
-
       });
-
     });
+
+    return promise;
+
   }
 
   build_destination_directory (dir_path) {
@@ -103,6 +120,33 @@ class BuildHordePackage {
     });
   }
 
+  make_zip () {
+
+    let projects = CONFIG.projects;
+    process.chdir(ROOT_DIR);
+    console.log('make_zip', __dirname);
+    recursive(__dirname + CONFIG.destination.replace('./', '/'), function (err, files) {
+      if (err) { console.log('err', err); }
+      // Files is an array of filename 
+      console.log('recursive ', files);
+      var zipfile = new yazl.ZipFile();
+
+      files.forEach((obj) => {
+        console.log('obj', obj);
+        zipfile.addFile(obj, obj.replace(__dirname + CONFIG.destination.replace('./', '/')), '');
+      });
+
+      zipfile.outputStream.pipe(fs.createWriteStream("output.zip")).on("close", function() {
+        console.log("done");
+      });
+
+      zipfile.end();
+
+    });
+
+  }
+
 }
+
 
 new BuildHordePackage();
