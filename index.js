@@ -9,6 +9,11 @@ const ROOT_DIR = process.cwd();
 const CONFIG_FILENAME = '.buidHordePackage.conf.js';
 const CONFIG = {};
 
+var destination_file_name = 'output';
+var major_vers: 0;
+var minor_vers: 0;
+var patch_vers: 1;
+
 class BuildHordePackage {
 
   constructor () {
@@ -31,7 +36,10 @@ class BuildHordePackage {
         console.log('updated config ', CONFIG);
         this.runBuilds()
         .then(() => {
-          this.make_zip();
+          this.make_zip()
+          .then(() => {
+            console.log('should call clean up', this);
+          });
         });
 
       } else if (err) {
@@ -121,28 +129,41 @@ class BuildHordePackage {
   }
 
   make_zip () {
+    return new Promise(function (resolve, reject) {
+      let projects = CONFIG.projects;
+      process.chdir(ROOT_DIR);
+      console.log('make_zip', __dirname);
+      recursive(__dirname + CONFIG.destination.replace('./', '/'), function (err, files) {
+        if (err) { return reject(err); }
+        // Files is an array of filename 
+        console.log('recursive ', files);
+        var zipfile = new yazl.ZipFile();
 
-    let projects = CONFIG.projects;
-    process.chdir(ROOT_DIR);
-    console.log('make_zip', __dirname);
-    recursive(__dirname + CONFIG.destination.replace('./', '/'), function (err, files) {
-      if (err) { console.log('err', err); }
-      // Files is an array of filename 
-      console.log('recursive ', files);
-      var zipfile = new yazl.ZipFile();
+        files.forEach((obj) => {
+          var packPath = CONFIG.destination.replace('./', '/');
+          var outputPath = obj.replace(__dirname, '');
+          outputPath = outputPath.replace(packPath, '');
+          outputPath = outputPath.replace(/^\//, '');
 
-      files.forEach((obj) => {
-        console.log('obj', obj);
-        zipfile.addFile(obj, obj.replace(__dirname + CONFIG.destination.replace('./', '/')), '');
+          console.log('obj', obj, __dirname, outputPath, CONFIG.destination.replace('./', '/'), packPath);
+          zipfile.addFile(obj, outputPath, '');
+        });
+
+        zipfile.outputStream.pipe(fs.createWriteStream("output.zip")).on("close", function(err) {
+          if (err) { return reject(err); }
+          console.log("done");
+          return resolve();
+        });
+
+        zipfile.end();
+
       });
-
-      zipfile.outputStream.pipe(fs.createWriteStream("output.zip")).on("close", function() {
-        console.log("done");
-      });
-
-      zipfile.end();
 
     });
+
+  }
+
+  cleanUp () {
 
   }
 
