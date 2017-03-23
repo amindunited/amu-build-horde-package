@@ -16,8 +16,34 @@ var patch_vers: 1;
 
 class BuildHordePackage {
 
+  /** these will be set by the get args method...
+
+    this.major = '';
+    this.minor = '';
+    this.buildNumber = '';
+  */
+
   constructor () {
-    this.loadConfig();
+    this.getArgs();
+    console.log('after...', this.major, this.minor);
+    //this.loadConfig();
+  }
+
+  getArgs () {
+    console.log('args', process.argv);
+    //The first 2 objects in the array are the env, and script...we don't need those
+    let args = process.argv.splice(2);
+    console.log('args', args);
+
+    //major, minor, buildNumber
+    args.forEach((obj) => {
+      let keyVal = obj.split('=');
+      let key = keyVal[0].replace('--', '');
+      let val = keyVal[1];
+      this[key] = val;
+      console.log('matching ', obj, key, val);
+    });
+
   }
 
   /**
@@ -131,6 +157,7 @@ class BuildHordePackage {
   make_zip () {
     return new Promise(function (resolve, reject) {
       let projects = CONFIG.projects;
+      let zipName = ``;
       process.chdir(ROOT_DIR);
       console.log('make_zip', __dirname);
       recursive(__dirname + CONFIG.destination.replace('./', '/'), function (err, files) {
