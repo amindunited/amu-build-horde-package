@@ -46,7 +46,7 @@ use:
 	//The code runs on constructor:
 	new AmuBuildHordePackage();
 
-Run your code from the command line with magor, minor, and buildNumber as flags:
+Run your code from the command line with major, minor, and buildNumber as flags:
 
 	//now pass through the config arguments as command flags:
 	$ node build.js --major=1 --minor=2 --buildNumber=14
