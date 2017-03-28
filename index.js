@@ -1,18 +1,17 @@
 "use strict";
 
-var path = require('path');
-var fs = require('fs-extra');
-var yazl = require('yazl');
-var recursive = require('recursive-readdir');
+
+const path = require('path');
+const fs = require('fs-extra');
+const yazl = require('yazl');
+const recursive = require('recursive-readdir');
 
 const ROOT_DIR = process.cwd();
-const CONFIG_FILENAME = '.buidHordePackage.conf.js';
+const CONFIG_FILENAME = '.buildHordePackage.conf.js';
 const CONFIG = {};
 
-var destination_file_name = 'output';
-var major_vers: 0;
-var minor_vers: 0;
-var patch_vers: 1;
+const _package = require(ROOT_DIR + '/package.json');
+
 
 class BuildHordePackage {
 
@@ -25,15 +24,24 @@ class BuildHordePackage {
 
   constructor () {
     this.getArgs();
-    console.log('after...', this.major, this.minor);
-    //this.loadConfig();
+    this.loadConfig()
+    .then(() => {
+      this.runBuilds()
+      .then(()=>{
+        this.make_zip()
+        .then(()=>{
+          this.cleanUp()
+          .then(()=>{
+            console.log('Build Package Done.');
+          });
+        });
+      });
+    });
   }
 
   getArgs () {
-    console.log('args', process.argv);
     //The first 2 objects in the array are the env, and script...we don't need those
     let args = process.argv.splice(2);
-    console.log('args', args);
 
     //major, minor, buildNumber
     args.forEach((obj) => {
@@ -41,7 +49,6 @@ class BuildHordePackage {
       let key = keyVal[0].replace('--', '');
       let val = keyVal[1];
       this[key] = val;
-      console.log('matching ', obj, key, val);
     });
 
   }
@@ -52,45 +59,45 @@ class BuildHordePackage {
    */
   loadConfig () {
 
-    let filePath = path.join(ROOT_DIR, CONFIG_FILENAME);
+    let promise = new Promise((resolve, reject) => {
 
-    fs.stat(filePath, (err, stats) => {
+      let filePath = path.join(ROOT_DIR, CONFIG_FILENAME);
 
-      if (!err && stats.isFile() ) {
+      fs.stat(filePath, (err, stats) => {
 
-        Object.assign(CONFIG, require(filePath).config);
-        console.log('updated config ', CONFIG);
-        this.runBuilds()
-        .then(() => {
-          this.make_zip()
-          .then(() => {
-            console.log('should call clean up', this);
-          });
-        });
+        if (!err && stats.isFile() ) {
 
-      } else if (err) {
+          Object.assign(CONFIG, require(filePath).config);
 
-        console.warn('Build Horde Package could not find a config file. Using default config.');
-        return CONFIG; // exit here since stats will be undefined
+          resolve(CONFIG);
+ 
+        } else if (err) {
 
-      } else {
+          console.warn('Build Horde Package could not find a config file. Using default config.');
+          reject(CONFIG);
 
-        return new Error('Configuration Error', err);
-
-      }
+        } else {
+          reject(err);
+        }
+      });
     });
+
+    return promise;
 
   }
 
+  /**
+   * Run the build scripts for each configured project and copy the result to the destination directory
+   * @return {promise}
+   */
   runBuilds () {
+
     let projects = CONFIG.projects;
-    console.log('config', CONFIG);
     let promise = new Promise((resolve, reject) => {
       
       this.build_destination_directory(CONFIG.destination).then(()=> {
-      
+
         projects.forEach((obj, index, arr) => {
-          console.log('project for each', obj);
           //...
           //should change the process to the directory for the project
           process.chdir(obj.src_directory);
@@ -105,20 +112,18 @@ class BuildHordePackage {
           var spawn = require('child_process').spawn;
           var exe = spawn( cmd, args );
 
-          //...then change back to root_dir
-          process.chdir(__dirname);
-
-          //...copy the files from the source to the destination
-          fs.copy(obj.src_directory+'/'+obj.build_output_dir, CONFIG.destination + '/' + obj.destination_dir, (err) => {
-            console.log('fs.copy ', err, __dirname);
-            if (!err) {
-              console.log('arr check', index, '===', arr.length);
-              if ( index === (arr.length - 1) ) {
-                console.log('should be the last one');
-                resolve();
-              }
-            }
+          exe.on('close', () => {
+            this.copyBuildToDestination(obj, index === (arr.length - 1))
+            .then(() => {
+              resolve();
+            }, (err) => {
+              reject(err);
+            });
           });
+
+          //...then change back to root_dir
+          process.chdir(ROOT_DIR);
+
         });
       });
     });
@@ -127,58 +132,108 @@ class BuildHordePackage {
 
   }
 
+  /**
+   * [copyBuildToDestination description]
+   * @param  {Object}  configObj - the config object for this child project
+   * @param  {Boolean} shouldResolve - if the promise should resolve
+   * @return {Promise}
+   */
+  copyBuildToDestination (configObj, shouldResolve) {
+
+    if ( shouldResolve === null || shouldResolve === undefined ) {
+      shouldResolve = true;
+    }
+
+    var promise = new Promise((resolve, reject) => {
+      // be sure that we are in the root_dir
+      process.chdir(ROOT_DIR);
+      //...copy the files from the source to the destination
+      fs.copy(configObj.src_directory+'/'+configObj.build_output_dir, CONFIG.destination + '/' + configObj.destination_dir, (err) => {
+
+        if (!err) {
+          if ( shouldResolve ) {
+            resolve();
+          }
+        } else {
+          reject(err);
+        }
+
+      });
+
+    });
+    return promise;
+  }
+
+
+  /**
+   * Create destination directory (if needed)
+   * @param  {string} dir_path - the RELATIVE path to create
+   * @return {promise}
+   */
   build_destination_directory (dir_path) {
 
-    return new Promise(function (resolve, reject) {
+    return new Promise((resolve, reject) => {
 
-      fs.lstat(dir_path, function(err, stat) {
-        
+      fs.lstat(dir_path, (err, stat) => {
+
         if (err) {
-          
-          console.warn('cannot find destination directory, will create it now');
-          
-          fs.mkdir(dir_path, function (err, stat) {
+
+          fs.mkdir(dir_path, (err, stat) => {
             if (err) {
-              console.warn('Error Creating destination directory...exiting...', err);
+
               reject(err);
+
             } else {
+
               resolve(stat);
+
             }
           });
 
         } else {
+
           resolve(stat);
+
         }
+
       });
 
     });
   }
 
+  /**
+   * Make a zip file containing all the projects' results  
+   * @return {promise}
+   */
   make_zip () {
-    return new Promise(function (resolve, reject) {
+    return new Promise((resolve, reject) => {
+
       let projects = CONFIG.projects;
       let zipName = ``;
+
       process.chdir(ROOT_DIR);
-      console.log('make_zip', __dirname);
-      recursive(__dirname + CONFIG.destination.replace('./', '/'), function (err, files) {
+
+      recursive(ROOT_DIR + CONFIG.destination.replace('./', '/'), (err, files) => {
+
         if (err) { return reject(err); }
-        // Files is an array of filename 
-        console.log('recursive ', files);
+
+        // Files is an array of filenames
         var zipfile = new yazl.ZipFile();
 
         files.forEach((obj) => {
           var packPath = CONFIG.destination.replace('./', '/');
-          var outputPath = obj.replace(__dirname, '');
+          var outputPath = obj.replace(ROOT_DIR, '');
           outputPath = outputPath.replace(packPath, '');
           outputPath = outputPath.replace(/^\//, '');
 
-          console.log('obj', obj, __dirname, outputPath, CONFIG.destination.replace('./', '/'), packPath);
           zipfile.addFile(obj, outputPath, '');
+
         });
 
-        zipfile.outputStream.pipe(fs.createWriteStream("output.zip")).on("close", function(err) {
+        var zipName = _package.name + '-' + this.major + '.' + this.minor + '.' + this.buildNumber + '.zip';
+
+        zipfile.outputStream.pipe(fs.createWriteStream(zipName)).on("close", function(err) {
           if (err) { return reject(err); }
-          console.log("done");
           return resolve();
         });
 
@@ -190,11 +245,46 @@ class BuildHordePackage {
 
   }
 
+  /**
+   * Delete the destination directory
+   * @return {promise}
+   */
   cleanUp () {
 
+    var promise = new Promise((resolve, reject) => {
+
+      process.chdir(ROOT_DIR);
+
+      fs.lstat(CONFIG.destination, function(err, stat) {
+
+        if (!err) {
+
+          fs.remove(CONFIG.destination, function (err, stat) {
+            if (err) {
+
+              reject(err);
+
+            } else {
+
+              resolve(stat);
+
+            }
+
+          });
+
+        } else {
+
+          resolve(stat);
+
+        }
+
+      });
+
+    });
+
+    return promise;
   }
 
 }
 
-
-new BuildHordePackage();
+module.exports = BuildHordePackage;
