@@ -12,7 +12,7 @@ my-project-1.2.44.zip
 
 Configuration:
 
- - create a .buildHordePackage.conf.js
+ - create a build.conf.js
  - this file should export an object containing a 'projects' array, and a 'destination' path
  - each object in the projects array should contain:
  	- a 'src_directory': the directory that the project is in
@@ -20,7 +20,7 @@ Configuration:
  	- a 'build_command': the command that will be called to run the project's build
  	- a 'build_output_dir': the directory that the project's build can be found in (this is where the projects file will be copied from) 
 
-an example config (.buildHordePackage.conf.js):
+an example config (build.config.js):
 
 	module.exports.config = {
 	  'projects' : [{
@@ -42,11 +42,13 @@ use:
 
 	//import the package into your code (see build.js):
 	
-	var AmuBuildHordePackage = require('./index.js');
-	//The code runs on constructor:
-	new AmuBuildHordePackage();
+	var AmuBuildHordePackage = require('./build.js');
+	//The config is loaded in the constructor:
+	var buildRunner = new AmuBuildHordePackage();
+	//Then just run the builds:
+	buildRunner.runBuilds();
 
 Run your code from the command line with major, minor, and buildNumber as flags:
 
 	//now pass through the config arguments as command flags:
-	$ node build.js --major=1 --minor=2 --buildNumber=14
+	$ node index.js --major=1 --minor=2 --buildNumber=14
