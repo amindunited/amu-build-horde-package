@@ -25,7 +25,7 @@ class BuildPackages {
     this.getArgs();
   }
 
-  runBuilds() {
+  startBuilds() {
     this.loadConfig()
     .then(() => {
       this.runBuilds()
@@ -123,7 +123,6 @@ class BuildPackages {
             console.log(`stderr: ${data}`);
           });
           exe.on('close', (err) => {
-            console.log('on close ? ', err);
             this.copyBuildToDestination(obj, index === (arr.length - 1))
             .then(() => {
               resolve();
@@ -158,7 +157,7 @@ class BuildPackages {
     var promise = new Promise((resolve, reject) => {
       // be sure that we are in the root_dir
       process.chdir(ROOT_DIR);
-      console.log('in copy...');
+
       //...copy the files from the source to the destination
       fs.copy(configObj.src_directory+'/'+configObj.build_output_dir, CONFIG.tmp_dir + '/' + configObj.destination_dir, (err) => {
 
